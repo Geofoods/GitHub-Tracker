@@ -62,7 +62,7 @@ app.command("/github-repo", async ({ command, ack, respond }) => {
   }
 
   try {
-    const res = await fetch(`https://api.github.com/repos/${encodeURIComponent(repo)}`);
+    const res = await fetch(`https://api.github.com/repos/${repo}`);
     if (res.status === 404) {
       return respond({ text: `Repository "${repo}" not found.` });
     }
@@ -102,7 +102,7 @@ app.command("/github-activity", async ({ command, ack, respond }) => {
 
   try {
     const res = await fetch(
-      `https://api.github.com/repos/${encodeURIComponent(repo)}/commits?per_page=10`,
+      `https://api.github.com/repos/${repo}/commits?per_page=10`,
       { headers: { Accept: "application/vnd.github+json" } }
     );
     if (res.status === 404) {
@@ -142,7 +142,7 @@ app.command("/github-contributors", async ({ command, ack, respond }) => {
 
   try {
     const res = await fetch(
-      `https://api.github.com/repos/${encodeURIComponent(repo)}/contributors?per_page=10`,
+      `https://api.github.com/repos/${repo}/contributors?per_page=10`,
       { headers: { Accept: "application/vnd.github+json" } }
     );
     if (res.status === 404) {
