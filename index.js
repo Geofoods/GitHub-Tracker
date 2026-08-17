@@ -1,6 +1,22 @@
 require("dotenv").config();
 
+const fs = require("fs");
+const path = require("path");
 const { App } = require("@slack/bolt");
+
+const LEADERBOARD_FILE = path.join(__dirname, "leaderboard.json");
+
+function loadLeaderboard() {
+  try {
+    return JSON.parse(fs.readFileSync(LEADERBOARD_FILE, "utf8"));
+  } catch {
+    return {};
+  }
+}
+
+function saveLeaderboard(data) {
+  fs.writeFileSync(LEADERBOARD_FILE, JSON.stringify(data, null, 2));
+}
 
 const app = new App({
   token: process.env.SLACK_BOT_TOKEN,
@@ -45,10 +61,38 @@ app.command("/user", async ({ command, ack, respond }) => {
       `*Profile:* ${data.html_url}`
     ].join("\n");
 
+    const leaderboard = loadLeaderboard();
+    leaderboard[data.login] = {
+      name: data.name || data.login,
+      followers: data.followers,
+      public_repos: data.public_repos,
+      updated_at: new Date().toISOString()
+    };
+    saveLeaderboard(leaderboard);
+
     await respond({ text: stats });
   } catch (err) {
     await respond({ text: `Error fetching GitHub user: ${err.message}` });
   }
+});
+
+app.command("/github-command", async ({ command, ack, respond }) => {
+  await ack();
+  const leaderboard = loadLeaderboard();
+  const entries = Object.entries(leaderboard)
+    .sort((a, b) => b[1].followers - a[1].followers)
+    .slice(0, 10);
+
+  if (entries.length === 0) {
+    return respond({ text: "No users tracked yet. Run /user <github-username> to add someone to the leaderboard." });
+  }
+
+  const lines = entries.map(
+    ([username, s], i) =>
+      `*${i + 1}.* ${s.name || username} (@${username}) — ${s.followers} followers · ${s.public_repos} repos`
+  );
+
+  await respond({ text: `*GitHub Leaderboard*\n${lines.join("\n")}` });
 });
 
 (async () => {
