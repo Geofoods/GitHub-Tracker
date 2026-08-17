@@ -167,6 +167,87 @@ app.command("/github-contributors", async ({ command, ack, respond }) => {
   }
 });
 
+const DAY_MS = 86400000;
+
+function fmtDate(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function daysBetween(a, b) {
+  return Math.round((new Date(b) - new Date(a)) / DAY_MS);
+}
+
+app.command("/github-streak", async ({ command, ack, respond }) => {
+  await ack();
+  const username = command.text.trim();
+  if (!username) {
+    return respond({ text: "Please provide a GitHub username. Example: /github-streak torvalds" });
+  }
+
+  try {
+    const res = await fetch(`https://github.com/users/${encodeURIComponent(username)}/contributions`, {
+      headers: { "User-Agent": "github-tracker", Accept: "text/html" }
+    });
+    if (res.status === 404) {
+      return respond({ text: `GitHub user "${username}" not found.` });
+    }
+    if (!res.ok) {
+      return respond({ text: `GitHub API error: ${res.status}` });
+    }
+
+    const html = await res.text();
+
+    const totalMatch = html.match(/([\d,]+)\s+contributions? in the last year/);
+    const total = totalMatch ? totalMatch[1] : "N/A";
+
+    const levels = {};
+    const dateRe = /data-date="(\d{4}-\d{2}-\d{2})" data-level="(\d)"/g;
+    let m;
+    while ((m = dateRe.exec(html)) !== null) {
+      levels[m[1]] = parseInt(m[2], 10);
+    }
+
+    const dates = Object.keys(levels).sort();
+    if (dates.length === 0) {
+      return respond({ text: `No contribution data found for "${username}".` });
+    }
+
+    const isActive = (d) => (levels[d] || 0) > 0;
+
+    let cursor = new Date();
+    if (!isActive(fmtDate(cursor))) {
+      cursor.setDate(cursor.getDate() - 1);
+    }
+    let currentStreak = 0;
+    while (isActive(fmtDate(cursor))) {
+      currentStreak++;
+      cursor.setDate(cursor.getDate() - 1);
+    }
+
+    let longestStreak = 0;
+    let run = 0;
+    let prev = null;
+    for (const d of dates) {
+      if (isActive(d)) {
+        run = prev && daysBetween(prev, d) === 1 ? run + 1 : 1;
+        longestStreak = Math.max(longestStreak, run);
+      }
+      prev = d;
+    }
+
+    await respond({
+      text: [
+        `*Contribution Streak for @${username}*`,
+        `*Current Streak:* ${currentStreak} day${currentStreak === 1 ? "" : "s"}`,
+        `*Longest Streak:* ${longestStreak} day${longestStreak === 1 ? "" : "s"}`,
+        `*Contributions in the last year:* ${total}`
+      ].join("\n")
+    });
+  } catch (err) {
+    await respond({ text: `Error fetching streak: ${err.message}` });
+  }
+});
+
 app.command("/github-leaderboard", async ({ command, ack, respond }) => {
   await ack();
 
