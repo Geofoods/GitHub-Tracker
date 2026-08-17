@@ -51,6 +51,45 @@ app.command("/user", async ({ command, ack, respond }) => {
   }
 });
 
+app.command("/github-repo", async ({ command, ack, respond }) => {
+  await ack();
+  const repo = command.text.trim();
+  if (!repo) {
+    return respond({ text: "Please provide a repository. Example: /github-repo torvalds/linux" });
+  }
+  if (!repo.includes("/")) {
+    return respond({ text: 'Invalid repository format. Use "owner/repo". Example: /github-repo torvalds/linux' });
+  }
+
+  try {
+    const res = await fetch(`https://api.github.com/repos/${encodeURIComponent(repo)}`);
+    if (res.status === 404) {
+      return respond({ text: `Repository "${repo}" not found.` });
+    }
+    if (!res.ok) {
+      return respond({ text: `GitHub API error: ${res.status}` });
+    }
+
+    const data = await res.json();
+    const info = [
+      `*Repository:* ${data.full_name}`,
+      `*Description:* ${data.description || "N/A"}`,
+      `*Language:* ${data.language || "N/A"}`,
+      `*Stars:* ${data.stargazers_count}`,
+      `*Forks:* ${data.forks_count}`,
+      `*Open Issues:* ${data.open_issues_count}`,
+      `*License:* ${data.license ? data.license.name : "N/A"}`,
+      `*Created:* ${data.created_at ? data.created_at.slice(0, 10) : "N/A"}`,
+      `*Last Updated:* ${data.updated_at ? data.updated_at.slice(0, 10) : "N/A"}`,
+      `*Link:* ${data.html_url}`
+    ].join("\n");
+
+    await respond({ text: info });
+  } catch (err) {
+    await respond({ text: `Error fetching repository: ${err.message}` });
+  }
+});
+
 app.command("/github-leaderboard", async ({ command, ack, respond }) => {
   await ack();
 
