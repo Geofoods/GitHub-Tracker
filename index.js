@@ -130,6 +130,43 @@ app.command("/github-activity", async ({ command, ack, respond }) => {
   }
 });
 
+app.command("/github-contributors", async ({ command, ack, respond }) => {
+  await ack();
+  const repo = command.text.trim();
+  if (!repo) {
+    return respond({ text: "Please provide a repository. Example: /github-contributors torvalds/linux" });
+  }
+  if (!repo.includes("/")) {
+    return respond({ text: 'Invalid repository format. Use "owner/repo". Example: /github-contributors torvalds/linux' });
+  }
+
+  try {
+    const res = await fetch(
+      `https://api.github.com/repos/${encodeURIComponent(repo)}/contributors?per_page=10`,
+      { headers: { Accept: "application/vnd.github+json" } }
+    );
+    if (res.status === 404) {
+      return respond({ text: `Repository "${repo}" not found.` });
+    }
+    if (!res.ok) {
+      return respond({ text: `GitHub API error: ${res.status}` });
+    }
+
+    const contributors = await res.json();
+    if (contributors.length === 0) {
+      return respond({ text: `No contributors found for "${repo}".` });
+    }
+
+    const lines = contributors.map(
+      (c, i) => `*${i + 1}.* ${c.login} — ${c.contributions} contributions`
+    );
+
+    await respond({ text: `*Top Contributors: ${repo}*\n${lines.join("\n")}` });
+  } catch (err) {
+    await respond({ text: `Error fetching contributors: ${err.message}` });
+  }
+});
+
 app.command("/github-leaderboard", async ({ command, ack, respond }) => {
   await ack();
 
