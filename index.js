@@ -1,22 +1,6 @@
 require("dotenv").config();
 
-const fs = require("fs");
-const path = require("path");
 const { App } = require("@slack/bolt");
-
-const LEADERBOARD_FILE = path.join(__dirname, "leaderboard.json");
-
-function loadLeaderboard() {
-  try {
-    return JSON.parse(fs.readFileSync(LEADERBOARD_FILE, "utf8"));
-  } catch {
-    return {};
-  }
-}
-
-function saveLeaderboard(data) {
-  fs.writeFileSync(LEADERBOARD_FILE, JSON.stringify(data, null, 2));
-}
 
 const app = new App({
   token: process.env.SLACK_BOT_TOKEN,
@@ -61,38 +45,44 @@ app.command("/user", async ({ command, ack, respond }) => {
       `*Profile:* ${data.html_url}`
     ].join("\n");
 
-    const leaderboard = loadLeaderboard();
-    leaderboard[data.login] = {
-      name: data.name || data.login,
-      followers: data.followers,
-      public_repos: data.public_repos,
-      updated_at: new Date().toISOString()
-    };
-    saveLeaderboard(leaderboard);
-
     await respond({ text: stats });
   } catch (err) {
     await respond({ text: `Error fetching GitHub user: ${err.message}` });
   }
 });
 
-app.command("/github-command", async ({ command, ack, respond }) => {
+app.command("/github-leaderboard", async ({ command, ack, respond }) => {
   await ack();
-  const leaderboard = loadLeaderboard();
-  const entries = Object.entries(leaderboard)
-    .sort((a, b) => b[1].followers - a[1].followers)
-    .slice(0, 10);
 
-  if (entries.length === 0) {
-    return respond({ text: "No users tracked yet. Run /user <github-username> to add someone to the leaderboard." });
+  try {
+    const res = await fetch(
+      "https://api.github.com/search/users?q=followers:%3E10000&sort=followers&order=desc&per_page=10",
+      { headers: { Accept: "application/vnd.github+json" } }
+    );
+    if (!res.ok) {
+      return respond({ text: `GitHub API error: ${res.status}` });
+    }
+
+    const { items } = await res.json();
+
+    const users = await Promise.all(
+      items.map(async (u) => {
+        const detail = await fetch(`https://api.github.com/users/${u.login}`);
+        return detail.ok ? detail.json() : null;
+      })
+    );
+
+    const lines = users
+      .filter(Boolean)
+      .map(
+        (u, i) =>
+          `*${i + 1}.* ${u.name ? `${u.name} ` : ""}@${u.login} — ${u.followers} followers · ${u.html_url}`
+      );
+
+    await respond({ text: `*Top 10 Most Followed on GitHub*\n${lines.join("\n")}` });
+  } catch (err) {
+    await respond({ text: `Error fetching leaderboard: ${err.message}` });
   }
-
-  const lines = entries.map(
-    ([username, s], i) =>
-      `*${i + 1}.* ${s.name || username} (@${username}) — ${s.followers} followers · ${s.public_repos} repos`
-  );
-
-  await respond({ text: `*GitHub Leaderboard*\n${lines.join("\n")}` });
 });
 
 (async () => {
