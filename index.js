@@ -90,6 +90,46 @@ app.command("/github-repo", async ({ command, ack, respond }) => {
   }
 });
 
+app.command("/github-activity", async ({ command, ack, respond }) => {
+  await ack();
+  const repo = command.text.trim();
+  if (!repo) {
+    return respond({ text: "Please provide a repository. Example: /github-activity torvalds/linux" });
+  }
+  if (!repo.includes("/")) {
+    return respond({ text: 'Invalid repository format. Use "owner/repo". Example: /github-activity torvalds/linux' });
+  }
+
+  try {
+    const res = await fetch(
+      `https://api.github.com/repos/${encodeURIComponent(repo)}/commits?per_page=10`,
+      { headers: { Accept: "application/vnd.github+json" } }
+    );
+    if (res.status === 404) {
+      return respond({ text: `Repository "${repo}" not found.` });
+    }
+    if (!res.ok) {
+      return respond({ text: `GitHub API error: ${res.status}` });
+    }
+
+    const commits = await res.json();
+    if (commits.length === 0) {
+      return respond({ text: `No commits found for "${repo}".` });
+    }
+
+    const lines = commits.map((c, i) => {
+      const message = (c.commit.message || "").split("\n")[0];
+      const author = c.commit.author?.name || "unknown";
+      const date = c.commit.author?.date ? c.commit.author.date.slice(0, 10) : "";
+      return `*${i + 1}.* \`${c.sha.slice(0, 7)}\` ${message}\n      ${author} · ${date}`;
+    });
+
+    await respond({ text: `*Recent Activity: ${repo}*\n${lines.join("\n")}` });
+  } catch (err) {
+    await respond({ text: `Error fetching activity: ${err.message}` });
+  }
+});
+
 app.command("/github-leaderboard", async ({ command, ack, respond }) => {
   await ack();
 
