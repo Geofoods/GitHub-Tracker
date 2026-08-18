@@ -197,11 +197,11 @@ app.command("/github-streak", async ({ command, ack, respond }) => {
 
     const html = await res.text();
 
-    const totalMatch = html.match(/([\d,]+)\s+contributions? in the last year/);
+    const totalMatch = html.match(/([\d,]+)\s+contributions?\s+in the last year/);
     const total = totalMatch ? totalMatch[1] : "N/A";
 
     const levels = {};
-    const dateRe = /data-date="(\d{4}-\d{2}-\d{2})" data-level="(\d)"/g;
+    const dateRe = /data-date="(\d{4}-\d{2}-\d{2})"[^>]*data-level="(\d)"/g;
     let m;
     while ((m = dateRe.exec(html)) !== null) {
       levels[m[1]] = parseInt(m[2], 10);
@@ -245,6 +245,46 @@ app.command("/github-streak", async ({ command, ack, respond }) => {
     });
   } catch (err) {
     await respond({ text: `Error fetching streak: ${err.message}` });
+  }
+});
+
+app.command("/github-releases", async ({ command, ack, respond }) => {
+  await ack();
+  const repo = command.text.trim();
+  if (!repo) {
+    return respond({ text: "Please provide a repository. Example: /github-releases torvalds/linux" });
+  }
+  if (!repo.includes("/")) {
+    return respond({ text: 'Invalid repository format. Use "owner/repo". Example: /github-releases torvalds/linux' });
+  }
+
+  try {
+    const res = await fetch(
+      `https://api.github.com/repos/${repo}/releases?per_page=5`,
+      { headers: { Accept: "application/vnd.github+json" } }
+    );
+    if (res.status === 404) {
+      return respond({ text: `Repository "${repo}" not found.` });
+    }
+    if (!res.ok) {
+      return respond({ text: `GitHub API error: ${res.status}` });
+    }
+
+    const releases = await res.json();
+    if (releases.length === 0) {
+      return respond({ text: `No releases found for "${repo}".` });
+    }
+
+    const lines = releases.map((r, i) => {
+      const tag = r.tag_name || "N/A";
+      const date = r.published_at ? r.published_at.slice(0, 10) : "N/A";
+      const name = r.name || tag;
+      return `*${i + 1}.* ${name} — \`${tag}\`\n      Released: ${date}\n      ${r.html_url}`;
+    });
+
+    await respond({ text: `*Recent Releases: ${repo}*\n${lines.join("\n")}` });
+  } catch (err) {
+    await respond({ text: `Error fetching releases: ${err.message}` });
   }
 });
 
