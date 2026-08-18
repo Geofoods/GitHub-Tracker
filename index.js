@@ -310,10 +310,10 @@ app.command("/github-hot", async ({ command, ack, respond }) => {
 
     const lines = items.map(
       (r, i) =>
-        `*${i + 1}.* ${r.full_name} — ⭐${r.stargazers_count} · ${r.forks_count} forks\n      ${r.description || "No description"}\n      ${r.html_url}`
+        `*${i + 1}.* ${r.full_name} — ${r.stargazers_count} stars · ${r.forks_count} forks\n      ${r.description || "No description"}\n      ${r.html_url}`
     );
 
-    await respond({ text: `*🔥 Most Active Repositories (last 14 days)*\n${lines.join("\n")}` });
+    await respond({ text: `*Most Active Repositories (last 14 days)*\n${lines.join("\n")}` });
   } catch (err) {
     await respond({ text: `Error fetching hot repositories: ${err.message}` });
   }
@@ -351,7 +351,7 @@ app.command("/github-trending", async ({ command, ack, respond }) => {
       .slice(0, 10)
       .map((r, i) => `*${i + 1}.* ${r}\n      https://github.com/${r}`);
 
-    const header = language ? `*🚀 Trending Repositories: ${language}*` : "*🚀 Trending Repositories Today*";
+    const header = language ? `*Trending Repositories: ${language}*` : "*Trending Repositories Today*";
     await respond({ text: `${header}\n${lines.join("\n")}` });
   } catch (err) {
     await respond({ text: `Error fetching trending: ${err.message}` });
@@ -415,7 +415,7 @@ app.command("/github-search", async ({ command, ack, respond }) => {
 
     const lines = items.map(
       (r, i) =>
-        `*${i + 1}.* ${r.full_name} — ⭐${r.stargazers_count} · ${r.forks_count} forks\n      ${r.description || "No description"}\n      ${r.html_url}`
+        `*${i + 1}.* ${r.full_name} — ${r.stargazers_count} stars · ${r.forks_count} forks\n      ${r.description || "No description"}\n      ${r.html_url}`
     );
 
     await respond({ text: `*Search Results for "${query}"*\n${lines.join("\n")}` });
@@ -452,11 +452,11 @@ app.command("/github-compare", async ({ command, ack, respond }) => {
     const [a, b] = await Promise.all([res1.json(), res2.json()]);
     const fmt = (r) => [
       `*${r.full_name}*`,
-      `⭐ Stars: ${r.stargazers_count}`,
-      `🍴 Forks: ${r.forks_count}`,
-      `👀 Watchers: ${r.watchers_count}`,
-      `🐛 Open Issues: ${r.open_issues_count}`,
-      `💬 Language: ${r.language || "N/A"}`
+      `Stars: ${r.stargazers_count}`,
+      `Forks: ${r.forks_count}`,
+      `Watchers: ${r.watchers_count}`,
+      `Open Issues: ${r.open_issues_count}`,
+      `Language: ${r.language || "N/A"}`
     ].join("\n");
 
     await respond({
@@ -592,7 +592,7 @@ app.command("/github-milestones", async ({ command, ack, respond }) => {
 
     const lines = milestones.map((m, i) => {
       const due = m.due_on ? m.due_on.slice(0, 10) : "No due date";
-      const state = m.state === "open" ? "🔓 Open" : "🔒 Closed";
+      const state = m.state === "open" ? "Open" : "Closed";
       return `*${i + 1}.* ${m.title} — ${state}\n      ${m.open_issues} open · ${m.closed_issues} closed · Due: ${due}\n      ${m.html_url}`;
     });
 
@@ -676,6 +676,30 @@ app.command("/github-leaderboard", async ({ command, ack, respond }) => {
   } catch (err) {
     await respond({ text: `Error fetching leaderboard: ${err.message}` });
   }
+});
+
+app.command("/github-help", async ({ ack, respond }) => {
+  await ack();
+  const commands = [
+    "`/user <username>` — Show GitHub user profile",
+    "`/github-repo <owner/repo>` — Show repository info",
+    "`/github-activity <owner/repo>` — Recent commits in a repo",
+    "`/github-contributors <owner/repo>` — Top contributors",
+    "`/github-streak <username>` — Contribution streak",
+    "`/github-releases <owner/repo>` — Recent releases",
+    "`/github-hot` — Most active repositories (last 14 days)",
+    "`/github-trending [language]` — Trending repositories",
+    "`/github-random` — Pick a random repository",
+    "`/github-search <query>` — Search GitHub repositories",
+    "`/github-compare <repo1> <repo2>` — Compare two repositories",
+    "`/github-health <owner/repo>` — Repository health score",
+    "`/github-milestones` — Milestones for the configured repo",
+    "`/github-roadmap` — Upcoming milestones for the configured repo",
+    "`/github-leaderboard` — Top 10 most followed GitHub users",
+    "`/github-tracker-ping` — Bot latency check"
+  ].join("\n");
+
+  await respond({ text: `*GitHub Tracker Commands*\n${commands}` });
 });
 
 (async () => {
