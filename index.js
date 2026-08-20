@@ -15,11 +15,11 @@ app.command("/github-tracker-ping", async ({ command, ack, respond }) => {
   await respond({ text: `Pong!\nLatency: ${latency}ms` });
 });
 
-app.command("/user", async ({ command, ack, respond }) => {
+app.command("/github-user", async ({ command, ack, respond }) => {
   await ack();
   const username = command.text.trim();
   if (!username) {
-    return respond({ text: "Please provide a GitHub username. Example: /user torvalds" });
+    return respond({ text: "Please provide a GitHub username. Example: /github-user torvalds" });
   }
 
   try {
@@ -919,7 +919,7 @@ app.command("/github-digest", async ({ command, ack, respond }) => {
 app.command("/github-help", async ({ ack, respond }) => {
   await ack();
   const commands = [
-    "`/user <username>` — Show GitHub user profile",
+    "`/github-user <username>` — Show GitHub user profile",
     "`/github-repo <owner/repo>` — Show repository info",
     "`/github-activity <owner/repo>` — Recent commits in a repo",
     "`/github-contributors <owner/repo>` — Top contributors",
