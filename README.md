@@ -7,7 +7,6 @@ A Slack bot that gives you real-time GitHub statistics
 - User profiles, repository info, recent activity and top contributors
 - Contribution streaks and daily GitHub contribution data
 - Trending, hot, random and searchable repositories
-- Repository health scoring and issue ratios
 - Weekly, monthly, velocity and digest development reports
 - Compare repositories side by side
 - Runs 24/7
