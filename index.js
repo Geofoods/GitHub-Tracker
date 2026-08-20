@@ -177,6 +177,49 @@ function daysBetween(a, b) {
   return Math.round((new Date(b) - new Date(a)) / DAY_MS);
 }
 
+async function fetchAllCommits(repo, sinceIso) {
+  const all = [];
+  let page = 1;
+  while (true) {
+    const res = await fetch(
+      `https://api.github.com/repos/${repo}/commits?since=${sinceIso}&per_page=100&page=${page}`,
+      { headers: { Accept: "application/vnd.github+json" } }
+    );
+    if (res.status === 404) return { error: `Repository "${repo}" not found.` };
+    if (!res.ok) return { error: `GitHub API error: ${res.status}` };
+    const batch = await res.json();
+    all.push(...batch);
+    if (batch.length < 100) break;
+    page++;
+  }
+  return { commits: all };
+}
+
+function summarizeCommits(commits, sinceMs) {
+  const filtered = commits.filter(
+    (c) => new Date(c.commit.author?.date).getTime() >= sinceMs
+  );
+  const byAuthor = {};
+  const byDay = {};
+  for (const c of filtered) {
+    const author = c.commit.author?.name || "unknown";
+    const date = (c.commit.author?.date || "").slice(0, 10);
+    byAuthor[author] = (byAuthor[author] || 0) + 1;
+    byDay[date] = (byDay[date] || 0) + 1;
+  }
+  return { filtered, byAuthor, byDay };
+}
+
+function topEntries(map, n = 5) {
+  return Object.entries(map)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, n);
+}
+
+function fmtPeriod(start) {
+  return `${fmtDate(start)} → ${fmtDate(new Date())}`;
+}
+
 app.command("/github-streak", async ({ command, ack, respond }) => {
   await ack();
   const username = command.text.trim();
@@ -678,6 +721,201 @@ app.command("/github-leaderboard", async ({ command, ack, respond }) => {
   }
 });
 
+app.command("/github-weekly", async ({ command, ack, respond }) => {
+  await ack();
+  const repo = command.text.trim();
+  if (!repo) {
+    return respond({ text: "Please provide a repository. Example: /github-weekly torvalds/linux" });
+  }
+  if (!repo.includes("/")) {
+    return respond({ text: 'Invalid repository format. Use "owner/repo". Example: /github-weekly torvalds/linux' });
+  }
+
+  try {
+    const start = new Date();
+    start.setDate(start.getDate() - 7);
+    const { commits, error } = await fetchAllCommits(repo, start.toISOString());
+    if (error) return respond({ text: error });
+
+    const { filtered, byAuthor, byDay } = summarizeCommits(commits, start.getTime());
+    const days = 7;
+    const perDay = filtered.length / days;
+
+    const authors = topEntries(byAuthor).map(
+      ([name, count], i) => `*${i + 1}.* ${name} — ${count} commit${count === 1 ? "" : "s"}`
+    );
+    const daysList = topEntries(byDay).map(
+      ([date, count], i) => `*${i + 1}.* ${date} — ${count} commit${count === 1 ? "" : "s"}`
+    );
+
+    const lines = [
+      `*Weekly Development Report: ${repo}*`,
+      `Period: ${fmtPeriod(start)}`,
+      `*Commits:* ${filtered.length} (${perDay.toFixed(1)}/day)`,
+      `*Contributors:* ${Object.keys(byAuthor).length}`,
+      "",
+      `*Top Contributors*`,
+      ...(authors.length ? authors : ["None"]),
+      "",
+      `*Most Active Days*`,
+      ...(daysList.length ? daysList : ["None"])
+    ];
+
+    await respond({ text: lines.join("\n") });
+  } catch (err) {
+    await respond({ text: `Error fetching weekly report: ${err.message}` });
+  }
+});
+
+app.command("/github-monthly", async ({ command, ack, respond }) => {
+  await ack();
+  const repo = command.text.trim();
+  if (!repo) {
+    return respond({ text: "Please provide a repository. Example: /github-monthly torvalds/linux" });
+  }
+  if (!repo.includes("/")) {
+    return respond({ text: 'Invalid repository format. Use "owner/repo". Example: /github-monthly torvalds/linux' });
+  }
+
+  try {
+    const start = new Date();
+    start.setDate(start.getDate() - 30);
+    const { commits, error } = await fetchAllCommits(repo, start.toISOString());
+    if (error) return respond({ text: error });
+
+    const { filtered, byAuthor, byDay } = summarizeCommits(commits, start.getTime());
+    const days = 30;
+    const perDay = filtered.length / days;
+    const busiest = topEntries(byDay, 1)[0];
+
+    const authors = topEntries(byAuthor, 10).map(
+      ([name, count], i) => `*${i + 1}.* ${name} — ${count} commit${count === 1 ? "" : "s"}`
+    );
+
+    const lines = [
+      `*Monthly Development Report: ${repo}*`,
+      `Period: ${fmtPeriod(start)}`,
+      `*Commits:* ${filtered.length} (${perDay.toFixed(1)}/day)`,
+      `*Contributors:* ${Object.keys(byAuthor).length}`,
+      `*Busiest day:* ${busiest ? `${busiest[0]} — ${busiest[1]} commits` : "None"}`,
+      "",
+      `*Top Contributors*`,
+      ...(authors.length ? authors : ["None"])
+    ];
+
+    await respond({ text: lines.join("\n") });
+  } catch (err) {
+    await respond({ text: `Error fetching monthly report: ${err.message}` });
+  }
+});
+
+app.command("/github-velocity", async ({ command, ack, respond }) => {
+  await ack();
+  const repo = command.text.trim();
+  if (!repo) {
+    return respond({ text: "Please provide a repository. Example: /github-velocity torvalds/linux" });
+  }
+  if (!repo.includes("/")) {
+    return respond({ text: 'Invalid repository format. Use "owner/repo". Example: /github-velocity torvalds/linux' });
+  }
+
+  try {
+    const weekStart = new Date();
+    weekStart.setDate(weekStart.getDate() - 7);
+    const monthStart = new Date();
+    monthStart.setDate(monthStart.getDate() - 30);
+
+    const [weekRes, monthRes] = await Promise.all([
+      fetchAllCommits(repo, weekStart.toISOString()),
+      fetchAllCommits(repo, monthStart.toISOString())
+    ]);
+    if (weekRes.error) return respond({ text: weekRes.error });
+    if (monthRes.error) return respond({ text: monthRes.error });
+
+    const week = summarizeCommits(weekRes.commits, weekStart.getTime());
+    const month = summarizeCommits(monthRes.commits, monthStart.getTime());
+
+    const weekRate = (week.filtered.length / 7).toFixed(1);
+    const monthRate = (month.filtered.length / 30).toFixed(1);
+    const trend = monthRate > weekRate ? "accelerating" : monthRate < weekRate ? "slowing" : "steady";
+    const busiest = topEntries(month.byDay, 1)[0];
+    const topAuthor = topEntries(month.byAuthor, 1)[0];
+
+    const lines = [
+      `*Development Velocity: ${repo}*`,
+      `*Last 7 days:* ${week.filtered.length} commits · ${weekRate}/day`,
+      `*Last 30 days:* ${month.filtered.length} commits · ${monthRate}/day`,
+      `*Trend:* ${trend}`,
+      `*Peak day (30d):* ${busiest ? `${busiest[0]} — ${busiest[1]} commits` : "None"}`,
+      `*Most active (30d):* ${topAuthor ? `${topAuthor[0]} — ${topAuthor[1]} commits` : "None"}`
+    ];
+
+    await respond({ text: lines.join("\n") });
+  } catch (err) {
+    await respond({ text: `Error fetching velocity: ${err.message}` });
+  }
+});
+
+app.command("/github-digest", async ({ command, ack, respond }) => {
+  await ack();
+  const repo = command.text.trim();
+  if (!repo) {
+    return respond({ text: "Please provide a repository. Example: /github-digest torvalds/linux" });
+  }
+  if (!repo.includes("/")) {
+    return respond({ text: 'Invalid repository format. Use "owner/repo". Example: /github-digest torvalds/linux' });
+  }
+
+  try {
+    const weekStart = new Date();
+    weekStart.setDate(weekStart.getDate() - 7);
+
+    const [repoRes, commitRes, prRes, issueRes, releaseRes] = await Promise.all([
+      fetch(`https://api.github.com/repos/${repo}`, { headers: { Accept: "application/vnd.github+json" } }),
+      fetchAllCommits(repo, weekStart.toISOString()),
+      fetch(`https://api.github.com/search/issues?q=${encodeURIComponent(`repo:${repo} type:pr state:open`)}`, { headers: { Accept: "application/vnd.github+json" } }),
+      fetch(`https://api.github.com/search/issues?q=${encodeURIComponent(`repo:${repo} type:issue state:open`)}`, { headers: { Accept: "application/vnd.github+json" } }),
+      fetch(`https://api.github.com/repos/${repo}/releases?per_page=3`, { headers: { Accept: "application/vnd.github+json" } })
+    ]);
+
+    if (repoRes.status === 404) return respond({ text: `Repository "${repo}" not found.` });
+    if (commitRes.error) return respond({ text: commitRes.error });
+    if (!repoRes.ok) return respond({ text: `GitHub API error: ${repoRes.status}` });
+
+    const r = await repoRes.json();
+    const { filtered, byAuthor } = summarizeCommits(commitRes.commits, weekStart.getTime());
+    const prCount = prRes.ok ? (await prRes.json()).total_count : "N/A";
+    const issueCount = issueRes.ok ? (await issueRes.json()).total_count : "N/A";
+    const releases = releaseRes.ok ? await releaseRes.json() : [];
+
+    const recentCommits = filtered.slice(0, 5).map((c, i) => {
+      const message = (c.commit.message || "").split("\n")[0];
+      const author = c.commit.author?.name || "unknown";
+      return `*${i + 1}.* \`${c.sha.slice(0, 7)}\` ${message}\n      ${author} · ${(c.commit.author?.date || "").slice(0, 10)}`;
+    });
+
+    const releaseLines = releases.map((rel, i) => `*${i + 1}.* ${rel.name || rel.tag_name} — \`${rel.tag_name}\` (${(rel.published_at || "").slice(0, 10)})`);
+
+    const lines = [
+      `*Activity Digest: ${repo}*`,
+      `*Repo:* ${r.stargazers_count} stars · ${r.forks_count} forks · ${r.open_issues_count} open issues`,
+      `*Commits (7d):* ${filtered.length} by ${Object.keys(byAuthor).length} contributors`,
+      `*Open PRs:* ${prCount}`,
+      `*Open Issues:* ${issueCount}`,
+      "",
+      `*Recent Releases*`,
+      ...(releaseLines.length ? releaseLines : ["None"]),
+      "",
+      `*Recent Commits*`,
+      ...(recentCommits.length ? recentCommits : ["None"])
+    ];
+
+    await respond({ text: lines.join("\n") });
+  } catch (err) {
+    await respond({ text: `Error fetching digest: ${err.message}` });
+  }
+});
+
 app.command("/github-help", async ({ ack, respond }) => {
   await ack();
   const commands = [
@@ -696,6 +934,10 @@ app.command("/github-help", async ({ ack, respond }) => {
     "`/github-milestones` — Milestones for the configured repo",
     "`/github-roadmap` — Upcoming milestones for the configured repo",
     "`/github-leaderboard` — Top 10 most followed GitHub users",
+    "`/github-weekly <owner/repo>` — Weekly development report",
+    "`/github-monthly <owner/repo>` — Monthly report",
+    "`/github-velocity <owner/repo>` — Development velocity",
+    "`/github-digest <owner/repo>` — Activity digest",
     "`/github-tracker-ping` — Bot latency check"
   ].join("\n");
 
