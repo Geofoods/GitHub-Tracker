@@ -944,6 +944,16 @@ app.command("/github-help", async ({ ack, respond }) => {
   await respond({ text: `*GitHub Tracker Commands*\n${commands}` });
 });
 
+const http = require("http");
+const PORT = process.env.PORT || 3000;
+
+http
+  .createServer((req, res) => {
+    res.writeHead(200, { "Content-Type": "text/plain" });
+    res.end("GitHub Tracker is running");
+  })
+  .listen(PORT, () => console.log(`Health server listening on port ${PORT}`));
+
 (async () => {
   await app.start();
   console.log("bot is running!");
